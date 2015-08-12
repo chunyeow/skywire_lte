@@ -1,8 +1,28 @@
+/* main.cpp */
+/* v1.1
+ * Copyright (C) 2015 nimbelink.com, MIT License
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+ * and associated documentation files (the "Software"), to deal in the Software without restriction,
+ * including without limitation the rights to use, copy, modify, merge, publish, distribute,
+ * sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+ * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+
 #include "mbed.h"
 #include "LPS331.h"
 #include "LIS3DH.h"
 #include "LM75B.h"
-
+#include "hts221.h"
 
 //  #define DeviceID "A100003E4226B3"  //Freeboard DweetIO unique ID
 // dynamically assigning this based on modem's unique identifier below
@@ -12,8 +32,6 @@ char DeviceID[15];
 DigitalOut skywire_en(PTD3);    //K64 FRDM
 DigitalOut skywire_rts(PTD2);    //K64 FRDM
 DigitalOut skywire_dtr(PTD0);    //K64 FRDM
-
-
 
 DigitalOut led_red(LED_RED);
 DigitalOut led_green(LED_GREEN);
@@ -28,12 +46,9 @@ char msg[3];
 LPS331 pressure(i2c);
 LM75B LM75_temp(PTE25,PTE24);
 LIS3DH accel(i2c, LIS3DH_V_CHIP_ADDR, LIS3DH_DR_NR_LP_100HZ, LIS3DH_FS_2G);
-
+HTS221 humidity(PTE25, PTE24);
 
 char str[255];
-
-
-
 
 float latitude;
 float longitude;
@@ -169,7 +184,9 @@ int main() {
     led_green = 1;
     float axis[3];
     float press;
-    float temp; 
+    float temp;
+    float humi;
+    float dummy_temp;  
     
     // turn on Skywire modem
     skywire_en = 1;
@@ -234,11 +251,13 @@ int main() {
     wait(3);
     
     while(1) {
-      temp = (float)LM75_temp;
-      temp = temp *9 /5 + 32;
+        temp = (float)LM75_temp;
+        temp = temp *9 /5 + 32;
         pc.printf("Temp = %.3f\r\n", temp);
-         press=(float)pressure.value() / 4096;
+        press=(float)pressure.value() / 4096;
         pc.printf("Pressure = %.3f\r\n", press);
+        humidity.ReadTempHumi(&dummy_temp, &humi);
+        pc.printf("Humidity = %.3f\r\n", humi);
         accel.read_data(axis);
         pc.printf("Accel = %.3f, %.3f, %.3f\r\n", axis[0], axis[1], axis[2]);
         
@@ -246,10 +265,9 @@ int main() {
         // turn LED Green to indicate transmission
         led_red=1;
         led_green = 0;  
-
           
         //Report Sensor Data to dweet.io
-        skywire.printf("AT#HTTPQRY=1,0,\"/dweet/for/%s?temperature=%.3f&pressure=%.3f&X=%.3f&Y=%.3f&Z=%.3f&Latitude=%f&Longitude=%f\"\r\n", DeviceID, temp, press, axis[0], axis[1], axis[2], latitude, longitude);
+        skywire.printf("AT#HTTPQRY=1,0,\"/dweet/for/%s?temp=%.3f&press=%.3f&humi=%.3f&X=%.3f&Y=%.3f&Z=%.3f&Latitude=%f&Longitude=%f\"\r\n", DeviceID, temp, press, humi, axis[0], axis[1], axis[2], latitude, longitude);
         WaitForResponse("#HTTPRING", 9);
         skywire.printf("AT#HTTPRCV=1\r\n");
         WaitForResponse("OK", 2);
