@@ -105,43 +105,6 @@ int WaitForResponse(char* response, int num) {
     return 0;
 }
 
-void check_sw2(void)
-{
-    if (sw2 == 0) {
-        pc.printf("SW2 button pressed. \r\n");
-        // turn RED LED on to indicate provisioning process has started
-        led_red = 0;
-        led_green = 1;
-        wait(1);
-        // turn LEDs off
-        led_red = 1;
-        led_green = 1;      
-        skywire.printf("ATD*22899;\r\n");
-        WaitForResponse("#OTASP: 0", 9);
-        pc.printf("Provisioning: #OTASP: 0 reached. \r\n");        
-        // turn RED LED on
-        led_red = 0;
-        led_green = 1;       
-        WaitForResponse("#OTASP: 1", 9);
-        pc.printf("Provisioning: #OTASP: 1 reached. \r\n");          
-        // turn both LEDs on
-        led_red = 0;
-        led_green = 0;            
-        WaitForResponse("#OTASP: 2", 9);
-        pc.printf("Provisioning: #OTASP: 2 reached. \r\n");         
-        // turn GREEN LED on
-        led_red = 1;
-        led_green = 0;           
-        WaitForResponse("NO CARRIER", 10);
-        pc.printf("Provisioning successfully completed. \r\n");
- 
-        skywire.printf("AT#REBOOT");
-        // wait 10 seconds 
-        wait(10);       
-        
-        
-    }
-}
 void blinkRG(int blinkduration)
 {
     // blinkduration is measured in seconds
@@ -215,17 +178,6 @@ int main() {
     skywire.printf("ATE0\r\n");
     WaitForResponse("OK", 2);
     
-    // check to see if switch 2 is pressed, if so, execute provisioning sequence
-    check_sw2();
-
-
-    // read out MEID number to use as unique identifier
-    skywire.printf("AT#MEIDESN?\r\n");
-    wait(2);
-    read_line(); 
-    read_line(); 
-    sscanf(rx_line, "%*s %14s,", DeviceID);
-
     pc.printf("Device MEID: %s \r\n", DeviceID); 
 
     pc.printf("Connecting to Network...\r\n");
@@ -237,17 +189,6 @@ int main() {
     led_red=0;
     led_green=0; 
        
-    // connect to dweet.io
-    skywire.printf("AT#HTTPCFG=1,\"dweet.io\",80,0\r\n");
-    WaitForResponse("OK", 2);
-    
-    //get location approximation from cell tower information
-    skywire.printf("AT#AGPSSND\r\n");
-    WaitForResponse("#AGPSRING:", 10);
-
-    //debug_pc.printf("Skywire says: %s\r\n", rx_line);
-    sscanf(rx_line, "%s %d,%f,%f,", str, &number, &latitude, &longitude);
-    //debug_pc.printf("Location: Latt:%f, Long:%f\r\n", latitude, longitude);
     wait(3);
     
     while(1) {
@@ -267,10 +208,6 @@ int main() {
         led_green = 0;  
           
         //Report Sensor Data to dweet.io
-        skywire.printf("AT#HTTPQRY=1,0,\"/dweet/for/%s?temp=%.3f&press=%.3f&humi=%.3f&X=%.3f&Y=%.3f&Z=%.3f&Latitude=%f&Longitude=%f\"\r\n", DeviceID, temp, press, humi, axis[0], axis[1], axis[2], latitude, longitude);
-        WaitForResponse("#HTTPRING", 9);
-        skywire.printf("AT#HTTPRCV=1\r\n");
-        WaitForResponse("OK", 2);
         led_green = 1;  
         wait(2);
         // see if user has requested to pause transmissions
