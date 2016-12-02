@@ -28,7 +28,6 @@
 // dynamically assigning this based on modem's unique identifier below
 char DeviceID[15];
 
-
 DigitalOut skywire_en(PTD3);    //K64 FRDM
 DigitalOut skywire_rts(PTD2);    //K64 FRDM
 DigitalOut skywire_dtr(PTD0);    //K64 FRDM
@@ -61,6 +60,9 @@ char rx_buffer[buffer_size+1];
 
 char rx_line[buffer_size];
 
+// Operator APN name
+char Operator[10] = "webe";
+
 void Skywire_Rx_interrupt() {
 // Loop just in case more than one character is in UART's receive FIFO buffer
 // Stop if buffer full
@@ -83,20 +85,21 @@ void read_line() {
 // End Critical Section - need to allow rx interrupt to get new characters for buffer
             __enable_irq();
             while (rx_in == rx_out) {
-              //pc.printf("..Read_line entered2.5\r\n");               
+              //pc.printf("..Read_line entered2.5\r\n");
             }
 // Start Critical Section - don't interrupt while changing global buffer variables
             __disable_irq();
         }
         rx_line[i] = rx_buffer[rx_out];
         i++;
-        rx_out = (rx_out + 1) % buffer_size;       
+        rx_out = (rx_out + 1) % buffer_size;
     }
 // End Critical Section
-    __enable_irq();       
+    __enable_irq();
     rx_line[i-1] = 0;
     return;
 }
+
 int WaitForResponse(char* response, int num) {
     do {
         read_line();
@@ -118,8 +121,9 @@ void blinkRG(int blinkduration)
     // leave the function with LEDs both off
     led_red=1;
     led_green=1;
-    
+
 }
+
 void check_sw3(void)
 {
     if (sw3 == 0) {
@@ -131,54 +135,99 @@ void check_sw3(void)
         led_red = 0;
         // wait a few seconds for user to release the button.
         wait(3);
-        
+
         // wait until user presses the button again to unpause
         while(sw3 ==1);
-       pc.printf("Transmissions resumed. \r\n");        
+       pc.printf("Transmissions resumed. \r\n");
          // turn LEDs off
         led_green = 1;
-        led_red = 1;       
+        led_red = 1;
     }
 }
 
 int main() {
-    
+
     led_red = 1;
     led_green = 1;
     float axis[3];
     float press;
     float temp;
     float humi;
-    float dummy_temp;  
-    
+    float dummy_temp;
+
     // turn on Skywire modem
     skywire_en = 1;
-    
+
     // setup skywire UART
     skywire_rts=0;
-    skywire_dtr=0;   
-    skywire.baud(115200); 
-    skywire.format(8, Serial::None, 1); 
-      
+    skywire_dtr=0;
+    skywire.baud(115200);
+    skywire.format(8, Serial::None, 1);
+
     // setup Skywire UART interrupt
     skywire.attach(&Skywire_Rx_interrupt, skywire.RxIrq);
-   
+
     pc.baud(115200);
     pc.printf("Hello World from FRDM-K64F board.\r\n");
     pc.printf("Starting Demo...\r\n");
     pc.printf("Waiting for Skywire to Boot...\r\n");
-  
+
     // wait 10 seconds for modem to boot up and connect to network
     blinkRG(10);
-    pc.printf("Waiting complete...\r\n");    
+    pc.printf("Waiting complete...\r\n");
 
     LM75_temp.open();
 
     //Turn off echo
     skywire.printf("ATE0\r\n");
     WaitForResponse("OK", 2);
-    
-    pc.printf("Device MEID: %s \r\n", DeviceID); 
+
+    // Set Report Mobile Equipment Error (CMEE)
+    skywire.printf("AT+CMEE=1\r\n");
+    WaitForResponse("OK", 2);
+
+    // Set 3GPP Network
+    skywire.printf("AT+WS46=25\r\n");
+    WaitForResponse("OK", 2);
+
+    // Check whether SIM is ready
+    skywire.printf("AT+CPIN?\r\n");
+    WaitForResponse("+CPIN: READY", 12);
+
+    // Get IMEI
+    skywire.printf("AT#CGSN\r\n");
+    WaitForResponse("OK", 2);
+    read_line();
+    read_line();
+    sscanf(rx_line, "%*s %14s,", DeviceID);
+    pc.printf("Device IMEI: %s \r\n", DeviceID);
+
+#ifdef ADDCHECK
+    // Get IMSI
+    skywire.printf("AT#CIMI\r\n");
+    WaitForResponse("#CIMI", 5);
+
+    // Check whether signal is received
+    skywire.printf("AT+CSQ\r\n");
+    WaitForResponse("+CSQ", 4);
+
+    // Check GPRS Context Activation if GPRS is ready
+    skywire.printf("AT#GPRS?\r\n");
+    WaitForResponse("#GPRS", 5);
+#endif
+
+    // Check Network Registration Status
+    skywire.printf("AT+CREG?\r\n");
+    // Make sure connect to Home Network
+    WaitForResponse("+CREG: 0,1", 10);
+
+    // Set the PDN context for Operator Network
+    skywire.printf("AT+CGDCONT=1,\"IP\",\"%s\"\r\n", Operator);
+    WaitForResponse("OK", 2);
+    skywire.printf("AT+CGDCONT?\r\n");
+    WaitForResponse("+CGDCONT: 1", 11);
+    WaitForResponse("+CGDCONT: 2", 11);
+    WaitForResponse("+CGDCONT: 3", 11);
 
     pc.printf("Connecting to Network...\r\n");
     // get IP address
@@ -187,10 +236,17 @@ int main() {
     WaitForResponse("OK", 2);
     // use LEDs to indicate we're connected to the newtork
     led_red=0;
-    led_green=0; 
-       
+    led_green=0;
+
+#ifdef DNSQ
+    blinkRG(10);
+    // Query DNS
+    skywire.printf("AT#QDNS=\"google.com\"\r\n");
+    WaitForResponse("#QDNS", 5);
+#endif
+
     wait(3);
-    
+
     while(1) {
         temp = (float)LM75_temp;
         temp = temp *9 /5 + 32;
@@ -201,20 +257,16 @@ int main() {
         pc.printf("Humidity = %.3f\r\n", humi);
         accel.read_data(axis);
         pc.printf("Accel = %.3f, %.3f, %.3f\r\n", axis[0], axis[1], axis[2]);
-        
+
         wait(0.25);
         // turn LED Green to indicate transmission
         led_red=1;
-        led_green = 0;  
-          
+        led_green = 0;
+
         //Report Sensor Data to dweet.io
-        led_green = 1;  
+        led_green = 1;
         wait(2);
         // see if user has requested to pause transmissions
         check_sw3();
     }
-
-
-    
-    
 }
