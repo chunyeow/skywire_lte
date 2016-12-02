@@ -49,8 +49,8 @@ HTS221 humidity(PTE25, PTE24);
 
 char str[255];
 
-float latitude;
-float longitude;
+float latitude = 0;
+float longitude = 0;
 int number;
 
 volatile int rx_in=0;
@@ -262,6 +262,17 @@ int main() {
         // turn LED Green to indicate transmission
         led_red=1;
         led_green = 0;
+
+        // Socket Dial to HTTP server
+        skywire.printf("AT#SD=1,0,80,\"dweet.io\"\r\n");
+        WaitForResponse("CONNECT", 7);
+        // HTTP POST to dweet.io
+        skywire.printf("POST /dweet/for/%s?temp=%.3f&press=%.3f&humi=%.3f&X=%.3f&Y=%.3f&Z=%.3f&Latitude=%f&Longitude=%f HTTP/1.1\r\n\r\n", DeviceID, temp, press, humi, axis[0], axis[1], axis[2], latitude, longitude);
+        // Wait for Carrier Return
+        WaitForResponse("NO CARRIER", 10);
+        // Close connection
+        skywire.printf("AT#SH=1\r\n");
+        WaitForResponse("OK", 2);
 
         //Report Sensor Data to dweet.io
         led_green = 1;
