@@ -63,6 +63,12 @@ char rx_line[buffer_size];
 // Operator APN name
 char Operator[10] = "webe";
 
+#ifdef GPSTK
+char la[20] = "";
+char lo[20] = "";
+char indla, indlo;
+#endif
+
 void Skywire_Rx_interrupt() {
 // Loop just in case more than one character is in UART's receive FIFO buffer
 // Stop if buffer full
@@ -145,6 +151,7 @@ void check_sw3(void)
     }
 }
 
+#ifdef GPSTK
 /* This portion of codes are borrowed from the waspmote libraries - start */
 
 float convert_gps_degree(char* input, char indicator)
@@ -209,6 +216,7 @@ float convert_gps_degree(char* input, char indicator)
 }
 
 /* This portion of codes are borrowed from the waspmote libraries - end */
+#endif
 
 int main() {
 
@@ -310,9 +318,43 @@ int main() {
     WaitForResponse("#QDNS", 5);
 #endif
 
+#ifdef GPSTK
+    // power down GPS modem
+    skywire.printf("AT$GPSP=0\r\n");
+    WaitForResponse("OK", 2);
+    // GPS Antenna power supplied by the module
+    skywire.printf("AT$GPSAT=1\r\n");
+    WaitForResponse("OK", 2);
+    // power down GPS controller
+    skywire.printf("AT$GPSP=0\r\n");
+    WaitForResponse("OK", 2);
+    skywire.printf("AT$GPSP?\r\n");
+    WaitForResponse("OK", 2);
+    // power up GPS controller with GPS Start Location Service request
+    // use Autonomous GPS mode of operation, no assistance from a network connection
+    skywire.printf("AT$GPSSLSR=2,3\r\n");
+    WaitForResponse("OK", 2);
+#endif
+
     wait(3);
 
     while(1) {
+#ifdef GPSTK
+        // Read GPS Location
+        skywire.printf("AT$GPSACP\r\n");
+        read_line();
+        read_line();
+        sscanf(rx_line, "%*s %*[^,],%[^,],%[^,]", la, lo);
+        indla = la[(strlen(la)-1)];
+        indlo = lo[(strlen(lo)-1)];
+        WaitForResponse("OK", 2);
+        *(la + (strlen(la) - 1)) = '\0';
+        *(lo + (strlen(lo) - 1)) = '\0';
+        latitude = convert_gps_degree(la, indla);
+        longitude = convert_gps_degree(lo, indlo);
+        pc.printf("Latitude: %.5f Longitute: %.5f\r\n", latitude, longitude);
+#endif
+
         temp = (float)LM75_temp;
         temp = temp *9 /5 + 32;
         pc.printf("Temp = %.3f\r\n", temp);
