@@ -376,6 +376,9 @@ int main() {
         // HTTP POST to dweet.io
         skywire.printf("POST /dweet/for/%s?temp=%.3f&press=%.3f&humi=%.3f&X=%.3f&Y=%.3f&Z=%.3f&Latitude=%f&Longitude=%f HTTP/1.1\r\n\r\n", DeviceID, temp, press, humi, axis[0], axis[1], axis[2], latitude, longitude);
         // Wait for Carrier Return
+#ifdef SPEEDCL
+	skywire.printf("\r\n+++\r\n");
+#endif
         WaitForResponse("NO CARRIER", 10);
         // Close connection
         skywire.printf("AT#SH=1\r\n");
