@@ -145,6 +145,71 @@ void check_sw3(void)
     }
 }
 
+/* This portion of codes are borrowed from the waspmote libraries - start */
+
+float convert_gps_degree(char* input, char indicator)
+{
+    // final latitude expresed in degrees
+    float degrees;
+    float minutes;
+
+    // auxiliar variable
+    char aux[10] = "";
+
+    // check if 'indicator' is a valid input
+    if ((indicator != 'N') && (indicator != 'S') &&
+        (indicator != 'E') && (indicator != 'W')) {
+        // invalid indicator
+        return 0;
+    }
+
+    // get 'degrees' from input parameter
+    if ((indicator == 'N') || (indicator == 'S')) {
+        // latitude format: DDmm.mmmm'
+        aux[0] = input[0];
+        aux[1] = input[1];
+        aux[2] = '\0';
+    } else if ((indicator == 'E') || (indicator == 'W')) {
+        // longitude format: DDDmm.mmmm'
+        aux[0]=input[0];
+        aux[1]=input[1];
+        aux[2]=input[2];
+        aux[3]='\0';
+    }
+
+    // convert string to integer and add it to final float variable
+    degrees = atoi(aux);
+
+    // get 'minutes' from input parameter
+    if ((indicator == 'N') || (indicator == 'S')) {
+        // latitude format: DDmm.mmmm'
+        for (int i=0; i<7; i++) {
+            aux[i] = input[i+2];
+        }
+        aux[7] = '\0';
+    } else if ((indicator == 'E') || (indicator == 'W')) {
+        // longitude format: DDDmm.mmmm'
+        for (int i = 0; i < 7; i++) {
+            aux[i] = input[i+3];
+        }
+        aux[7] = '\0';
+   }
+
+   // convert string to integer and add it to final float variable
+   minutes = atof(aux);
+   // add minutes to degrees
+   degrees = degrees + minutes/60;
+
+   // add sign: '+' for North/East; '-' for South/West
+   if ((indicator == 'S') || (indicator == 'W')) {
+        degrees *= -1.0;
+   }
+
+   return degrees;
+}
+
+/* This portion of codes are borrowed from the waspmote libraries - end */
+
 int main() {
 
     led_red = 1;
