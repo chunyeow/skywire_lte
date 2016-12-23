@@ -249,6 +249,9 @@ int main() {
     blinkRG(10);
     pc.printf("Waiting complete...\r\n");
 
+    // Wait for 1 minute
+    wait(60);
+
     LM75_temp.open();
 
     //Turn off echo
