@@ -1,0 +1,126 @@
+--- ../../../v04-orig/waspmote-pro-ide-v04-linux64/libraries/_3G/Wasp3G.h	2016-05-03 09:34:10.000000000 +0800
++++ Wasp3G.h	2017-03-23 10:34:28.939879876 +0800
+@@ -20,7 +20,14 @@
+     Version:		1.4
+     Design:			David Gascón
+     Implementation:	Alejandro Gállego
+-
++ 
++    Copyright (C) 2016 Telekom Research & Development Sdn. Bhd.
++    http://www.tmrnd.com.my
++    Extension:          Support SARA G350 for POST and GET using Connection Socket
++    Implementaion:      Chun-Yeow, Yeoh
++    
++    Extension:          Support for SARA N201 
++    Implementation:     Chun-Yeow, Yeoh
+ */
+ 
+  /*! \def Wasp3G_h
+@@ -39,16 +46,17 @@
+ //#include <WaspWIFI.h>
+ 
+ //!Module fuses
+-#define GSM_FUSE	1		//Call and SMS related functions and constants
++#define GSM_FUSE	0		//Call and SMS related functions and constants
+ #define CAMERA_FUSE	0		//Camera related functions and constants
+-#define FTP_FUSE	1		//FTP related functions and constants
+-#define MAIL_FUSE	1		//SMTP and POP3 related functions and constants
++#define FTP_FUSE	0		//FTP related functions and constants
++#define MAIL_FUSE	0		//SMTP and POP3 related functions and constants
+ #define HTTP_FUSE	1		//HTTP and HTTPS related functions and constants
+-#define GPS_FUSE	1		//GPS related functions and constants
+-#define IP_FUSE		1		//TCP and UDP related functions and constants
+-#define TRANSMISSION_FUSE	1
++#define GPS_FUSE	0		//GPS related functions and constants
++#define IP_FUSE		0		//TCP and UDP related functions and constants
++#define TRANSMISSION_FUSE	0
++#define NBIOT_FUSE	0
+ 
+-#define OTA_FUSE	1		//TCP and UDP related functions and constants
++#define OTA_FUSE	0		//TCP and UDP related functions and constants
+ 
+ #define _3G_debug_mode	0
+ 
+@@ -97,7 +105,8 @@
+ /*! \def _3G_RATE
+     \brief SIM5218 Baud Rate
+  */
+-#define	_3G_RATE	115200
++//#define	_3G_RATE	115200
++#define       _3G_RATE        9600
+ 
+ /*! \def DELAY_ON_SEND
+     \brief Constants for AT commands. Delay after every sending attempt in this case
+@@ -206,6 +215,9 @@
+ #define ERROR_CMS 	"+CMS ERROR:"
+ #define ERROR		"ERROR"
+ 
++// IP Address
++#define IPADDRGET	"xxx.xxx.xxx.xxx"
++
+ //Xmodem constants
+ #define XMODEM_ACK		0x06
+ #define XMODEM_NAK		0x15
+@@ -237,7 +249,23 @@ class Wasp3G
+ 	char str_aux3[60];
+ 	char str_aux4[20];
+ 	char str_aux5[20];
+-	
++#if HTTP_FUSE
++	char tcp_sock;
++	//char udp_sock;
++#endif
++	char ip_addr_remote[20];
++	char ip_addr_dns[20];
++	uint16_t rlength;
++	uint16_t udp_port;
++#if HTTP_FUSE
++	bool chklen = true;
++#endif	
++#if NBIOT_FUSE
++	char strnbiot[512];
++#endif
++#if HTTP_FUSE
++	char HTTPres[800];
++#endif
+    	//! Variables: strings that store _apn, _apn_login and _apn_password from operator
+ 	char _apn[20], _apn_login[20], _apn_password[20];
+ 	
+@@ -584,8 +612,10 @@ class Wasp3G
+ 		and '-4' if the state is unknown
+ 	 */
+ 	int8_t check(unsigned long time);
+-	
+-		//! Sets time and date to 3G module from RTC
++#if NBIOT_FUSE
++	int8_t checknbiot(unsigned long time);
++#endif
++	//! Sets time and date to 3G module from RTC
+ 	/*!
+ 	\return '1' on success , '0' or '-2' if error
+ 	*/
+@@ -1286,6 +1316,9 @@ class Wasp3G
+ 	//!HTTP and HTTPS functions
+ 	#if HTTP_FUSE
+ 
++	int8_t actProfile();
++	int16_t readSARA_URL(const char* url, uint16_t port, const char* HTTP_request);
++
+ 	//! Sends a request to a HTTP url and get an answer. The answer is stored in 'buffer_3G'
+ 	/*!
+ 	\param const char* url: server to send the HTTP request. "www.http_server.com"
+@@ -2081,6 +2114,14 @@ class Wasp3G
+ 	*/
+ 	int8_t requestOTA(const char* FTP_server, const char* FTP_port, const char* FTP_username, const char* FTP_password);
+ 	#endif
++
++	#if NBIOT_FUSE
++        int8_t nbiotreset();
++        int8_t nbiotIP();
++	//int8_t nbiotSock(uint16_t port);
++        int8_t nbiotData(const char* ipaddr, uint16_t port, const char* UDP_request);
++        int8_t actNBIOT();
++	#endif
+ };
+ 
+ extern Wasp3G _3G;

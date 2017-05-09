@@ -1,0 +1,796 @@
+--- ../../../v04-orig/waspmote-pro-ide-v04-linux64/libraries/_3G/Wasp3G.cpp	2016-05-03 09:34:10.000000000 +0800
++++ Wasp3G.cpp	2017-03-23 10:36:30.683875820 +0800
+@@ -18,6 +18,14 @@
+  *  Version:		1.8
+  *  Design:			David Gascón
+  *  Implementation:	Alejandro Gállego
++ *
++ *  Copyright (C) 2016 Telekom Research & Development Sdn. Bhd.
++ *  http://www.tmrnd.com.my
++ *  Extension:		Support SARA G350 for POST and GET using Connection Socket
++ *  Implementation:	Chun-Yeow, Yeoh
++ *
++ *  Extension:		Support for SARA N201 
++ *  Implementation:	Chun-Yeow, Yeoh
+  */
+   
+ 
+@@ -27,6 +35,8 @@
+ 
+ #include <Wasp3G.h>
+ 
++#define NBIOT 1
++
+ //Power constants
+ const char POWER_FULL[]			PROGMEM	= "+CFUN=1";		//0
+ const char POWER_RF_OFF[] 		PROGMEM	= "+CFUN=4";		//1
+@@ -113,6 +123,25 @@ const char XMODEM_SEND[]		PROGMEM = "+CR
+ const char CHECK_GPRS[]			PROGMEM = "+CGREG?";		//61
+ const char CHECK_GPRS_RES[]		PROGMEM = "+CGREG: 0,";		//62
+ 
++// SARA G350 module 
++const char SET_UPSD[]			PROGMEM = "+UPSD=";	// 63
++const char ACT_UPSD[]			PROGMEM = "+UPSDA=";	// 64
++const char SET_UPSND[]			PROGMEM = "+UPSND="; // 65
++const char UPSND_IP[]			PROGMEM = "+UPSND: 0,0"; // 66
++
++#if NBIOT_FUSE
++// SARA N201 NB-IoT module
++const char NB_CHECK[]			PROGMEM = "+CEREG?";          //67 
++const char NB_CHECK_RES[]		PROGMEM = "+CEREG:0,1";          //68
++const char NB_IPADDR[]			PROGMEM = "+CGPADDR=1";		//69
++const char NB_GIPADDR[]			PROGMEM = "+CGPADDR:1,";		//70 
++const char NB_CGDCONT[]			PROGMEM = "+CGDCONT=1,";	// 71
++const char NB_CGATT[]			PROGMEM = "+CGATT=1";	// 72
++const char NB_COPS[]			PROGMEM = "+COPS=1,2,\"502153\""; // 73
++const char NB_CHECKS[]			PROGMEM = "+CSCON?"; // 74
++const char NB_CHECKS_RES[]		PROGMEM = "+CSCON:0,"; // 75
++const char NB_REBOOT[]			PROGMEM = "+NRB"; // 76
++#endif
+ 
+ const char* const  table_MISC[] PROGMEM = 
+ {   
+@@ -196,13 +225,32 @@ const char* const  table_MISC[] PROGMEM
+ 	XMODEM_SEND,			//60
+ 	
+ 	CHECK_GPRS,				//61
+-	CHECK_GPRS_RES,			//62	
+-};
+-
++	CHECK_GPRS_RES,			//62
+ 
++	// SARA G350 module
++	SET_UPSD,			//63
++	ACT_UPSD,			//64
++	SET_UPSND,			//65
++	UPSND_IP,			//66
++
++#if NBIOT_FUSE
++	// SARA N201 module
++	NB_CHECK,			//67
++	NB_CHECK_RES,			//68
++	NB_IPADDR,			//69
++	NB_GIPADDR,			//70
++	NB_CGDCONT,			//71
++	NB_CGATT,			//72
++	NB_COPS,			//73
++	NB_CHECKS,                      //74
++	NB_CHECKS_RES,                  //75
++	NB_REBOOT,			//76
++#endif
++};
+ 
+ //Call and SMS constants
+ #if GSM_FUSE	
++
+ const char CALL[]			PROGMEM	= "D";				//0
+ const char LINE_ID[]		PROGMEM	= "+CLIP=1";		//1
+ const char HANG_CALL[]		PROGMEM	= "+CHUP";			//2
+@@ -499,7 +547,6 @@ const char* const table_MAIL[] PROGMEM =
+ 
+ //HTTP constants
+ #if HTTP_FUSE
+-	
+ 
+ const unsigned long HTTP_TIMEOUT = 45000;		// Timeout for HTTP and HTTPS functions in miliseconds
+ const unsigned long HTTP_CONF_TIMEOUT = 15000;	// Timeout for HTTP and HTTPS functions in miliseconds
+@@ -525,7 +572,17 @@ const char HTTP_FRAME_3[]	PROGMEM	= "\r\
+ const char HTTP_END_GET[]	PROGMEM	= "0\r\n\r\n";												//16
+ const char HTTP_END_POST[]	PROGMEM	= "\r\n\r\nframe=";											//17
+ 
+-
++// SARA G350 - HTTP Support
++const char STCP_SOCK[]		PROGMEM = "+USOCR=6";
++const char STCP_SOCK_ACK[]	PROGMEM = "+USOCR: ";
++const char STCP_DNS[]		PROGMEM = "+UDNSRN=";
++const char STCP_DNS_ACK[]	PROGMEM = "+UDNSRN: ";
++const char SET_USOCO[]		PROGMEM = "+USOCO=";
++const char SET_USOWR[]		PROGMEM = "+USOWR=";
++const char USOWR_RET[]		PROGMEM = "+USOWR: ";
++const char SET_USORD[]		PROGMEM = "+USORD=";
++const char USORD_RET[]		PROGMEM = "+USORD: ";
++const char STCP_SOCK_CL[]	PROGMEM = "+USOCL=";
+ 
+ const char* const table_HTTP[] PROGMEM = 
+ {   
+@@ -549,6 +606,17 @@ const char* const table_HTTP[] PROGMEM =
+ 	HTTP_FRAME_3,	//15
+ 	HTTP_END_GET,	//16
+ 	HTTP_END_POST,	//17
++
++	STCP_SOCK,      //18
++	STCP_SOCK_ACK,  //19
++	STCP_DNS,	//20
++	STCP_DNS_ACK,	//21
++	SET_USOCO,	//22
++	SET_USOWR,	//23
++	USOWR_RET,	//24
++	SET_USORD,	//25
++	USORD_RET,	//26
++	STCP_SOCK_CL,	//27
+ };
+ #endif
+ 
+@@ -664,6 +732,24 @@ const char* const table_IP[] PROGMEM =
+ };
+ #endif
+ 
++#if NBIOT_FUSE
++// SARA N201 module
++const char NB_USOCK[]           PROGMEM = "+NSOCR=DGRAM,17,";
++const char NB_CSOCK[]           PROGMEM = "+NSOCL=";
++const char NB_SDATA[]           PROGMEM = "+NSOST=";
++const char NB_ISOCK_R[]         PROGMEM = "+NSONMI:0,";
++const char NB_RDATA[]           PROGMEM = "+NSORF=";
++
++const char* const table_NBIOT[] PROGMEM =
++{
++        NB_USOCK,       //0
++        NB_CSOCK,       //1
++        NB_SDATA,       //2
++        NB_ISOCK_R,     //3
++        NB_RDATA,       //4
++};
++#endif
++
+ 
+ #define OTA_ver_file	"/UPGRADE.TXT"
+ #define NO_OTA			"NO_FILE"
+@@ -727,7 +813,7 @@ int8_t Wasp3G::check3Gconnection(unsigne
+ 	
+ 	unsigned long previous;
+ 	int8_t answer;
+-	
++
+ 	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[61])));	//CHECK_GPRS
+ 	strcpy_P(str_aux2, (char*)pgm_read_word(&(table_MISC[62])));	//CHECK_GPRS_RES
+ 	
+@@ -749,10 +835,10 @@ int8_t Wasp3G::check3Gconnection(unsigne
+ 		if( millis() < previous) previous = millis();
+ 	}while (((answer == 2) || (answer == 4) || (answer == 0) || (answer == -1)) && ((millis() - previous) < (time * 1000)));
+ 	 
+-	//#if _3G_debug_mode>0
++	#if _3G_debug_mode>0
+ 		USB.print(F("Network status: "));
+ 		USB.println(answer, DEC);
+-//	#endif
++	#endif
+ 
+ 	if (((answer != 1) && (answer != 5) && (answer != -1)) || ((millis() - previous) > (time * 1000)))
+ 	{
+@@ -821,9 +907,239 @@ uint16_t Wasp3G::sendXModemCheckSum(char
+     return (crc);
+ }
+ 
++#if NBIOT_FUSE
++
++/*
++ * Check the IP address of SARA NB-IoT Module
++ */
++
++int8_t Wasp3G::nbiotreset()
++{
++        int8_t answer;
++
++        // RESET the NB-IoT Module
++        strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[76])));
++
++        answer=sendCommand1(str_aux1, OK_RESPONSE);
++	if (answer != 1)
++	      return -1;
++
++        return 1;
++}
++
++int8_t Wasp3G::nbiotIP()
++{
++	int8_t answer;
++	int16_t count;
++
++	// Get the IP address
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[69])));   
++	//snprintf(buffer_3G, sizeof(buffer_3G), "%s0,0", str_aux1);
++	strcpy_P(str_aux2, (char*)pgm_read_word(&(table_MISC[70])));
++
++	count = 5;
++	do {
++		answer=sendCommand1(str_aux1, str_aux2);
++		count--;
++	} while ((answer != 1) && (count  > 0));
++	if (count == 0) {
++		return -1;
++	}
++
++	return 1;
++}
++
++/*
++int8_t Wasp3G::nbiotSock(uint16_t port){
++	int8_t answer;
++
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_NBIOT[0]))); 
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s%d,1", str_aux1, port); 
++        answer = sendCommand1(buffer_3G, OK_RESPONSE);                                  // Look for socket 0
++        if (answer != 1)
++                return -1;
++
++	USB.print(F("[NB-IoT-create]"));
++	USB.println(buffer_3G);
++	return 1;
++}
++*/
++
++int8_t Wasp3G::nbiotData(const char* ipaddr, uint16_t port, const char* UDP_request){
++	int8_t answer;
++
++	// Create the socket
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_NBIOT[0])));    	// NSOCR 
++        //snprintf(buffer_3G, sizeof(buffer_3G), "%s%d,0", str_aux1, port);	// Ignore the incoming message
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s%d,1", str_aux1, port);     // Incoming message triggers a +NSONMI unsolicited message
++        answer = sendCommand1(buffer_3G, OK_RESPONSE /*"0"*/);					// Look for socket 0
++        if (answer != 1)
++                return -1;
++
++	USB.print(F("[NB-IoT-create]"));
++        USB.println(buffer_3G);
++    
++	// Send data over UDP socket
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_NBIOT[2])));            // NSOST 
++        snprintf(buffer_3G, sizeof(buffer_3G), "%s0,%s,%d,%d,%s", str_aux1, ipaddr, port, strlen(UDP_request)/2, UDP_request);
++	//snprintf(buffer_3G, sizeof(buffer_3G), "%s0,%s,%d,10,3132333435363738393A", str_aux1, ipaddr, port);
++	answer = sendCommand1(buffer_3G, OK_RESPONSE);
++        if (answer != 1)
++                return -1;
++
++	USB.print(F("[NB-IoT-send]"));
++        USB.println(buffer_3G);
++
++	delay(1000);
++
++	// Wait for incoming data
++	answer=waitForData("+NSONMI:0,", 10000, millis(), 0);
++	if(answer == 1) {
++		// Read data over UDP socket
++		USB.print(F("[NB-IoT] Received Data length: "));
++		USB.println(rlength);
++		strcpy_P(str_aux1, (char*)pgm_read_word(&(table_NBIOT[4])));	// NSORF
++		snprintf(buffer_3G, sizeof(buffer_3G), "%s0,%d", str_aux1, rlength);
++		snprintf(str_aux3, sizeof(str_aux3), "0,%s,%d,%d,", ipaddr, port, rlength);
++		//answer = sendCommand1(buffer_3G, "0,58.26.233.145,5001,58,");
++		sprintf(ip_addr_remote, "%s", ipaddr);
++		udp_port = port;
++		answer = sendCommand1(buffer_3G, str_aux3);
++		//if (answer != 1) {// close socket even failed in reading
++		//	return -1;
++		//}			
++	}
++
++	USB.print(F("[NB-IoT-recv]"));
++        USB.println(buffer_3G);
++	//USB.println(str_aux3);
++
++	// Close the socket
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_NBIOT[1])));            // NSOCL
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s0", str_aux1);
++	answer = sendCommand1(buffer_3G, OK_RESPONSE);
++	if (answer != 1)
++		return -1;
++
++        USB.print(F("[NB-IoT-close]"));
++        USB.println(buffer_3G);
++
++	return 1;
++}
++
++
++int8_t Wasp3G::actNBIOT()
++{
++        int8_t answer;
++        int16_t count;
++
++	// Define PDP Context
++        strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[71])));            // CGDCONT 
++        snprintf(buffer_3G, sizeof(buffer_3G), "%s\"IP\",\"%s\"", str_aux1, _apn); 
++        answer = sendCommand1(buffer_3G, OK_RESPONSE);                     
++        if (answer != 1)
++                return -1;
++
++	//USB.print(F("[NB-IoT]"));
++	//USB.println(buffer_3G);
++
++	//Manual configuration
++        strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[73])));            // COPS
++        answer = sendCommand1(str_aux1, OK_RESPONSE);
++        if (answer != 1)
++                return -1;	
++
++        //USB.print(F("[NB-IoT]"));
++        //USB.println(str_aux1);
++
++	return 1;
++}
++
++#endif
+ 
+ #if HTTP_FUSE
+ 
++/* 
++ * Activate Profile of SARA GSM Module
++ */
++
++int8_t Wasp3G::actProfile()
++{
++	int8_t answer;
++	int16_t count;
++
++	// Checks the connection
++	answer = check3Gconnection(90);
++	if ((answer != 1) && (answer != -1)) {
++		return 0;
++	} else if (answer == -1) {
++		return -1;
++	}
++
++        // Sets APN
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[63])));	// SET UPSD
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s0,1,\"%s\"", str_aux1, _apn);
++	count = 5;
++	do {
++		answer=sendCommand1(buffer_3G, OK_RESPONSE);
++		count--;
++	} while ((answer != 1) && (count  > 0));
++	if (count == 0) {
++		return -1;
++	}
++
++	// Dynamic IP address assignment
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[63])));	// SET UPSD
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s0,7,\"0.0.0.0\"", str_aux1);
++	count = 5;
++	do {
++		answer=sendCommand1(buffer_3G, OK_RESPONSE);
++		count--;
++	} while ((answer != 1) && (count  > 0));
++	if (count == 0) {
++		return -1;
++	}
++
++	// Set no authentication
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[63])));	// SET UPSD
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s0,6,0", str_aux1);
++	count = 5;
++	do {
++		answer=sendCommand1(buffer_3G, OK_RESPONSE);
++		count--;
++	} while ((answer != 1) && (count  > 0));
++	if (count == 0) {
++		return -1;
++	}
++
++	// Activate Packet Switched Data Action - Activate Profile
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[64])));	// SET UPSDA
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s0,3", str_aux1);
++	count = 5;
++	do {
++		answer=sendCommand1(buffer_3G, OK_RESPONSE);
++		count--;
++	} while ((answer != 1) && (count  > 0));
++	if (count == 0) {
++		return -1;
++	}
++
++	// Get the IP address
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[65])));	// SET UPSND
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s0,0", str_aux1);
++	strcpy_P(str_aux2, (char*)pgm_read_word(&(table_MISC[66])));
++	count = 5;
++	do {
++		answer=sendCommand1(buffer_3G, str_aux2);
++		count--;
++	} while ((answer != 1) && (count  > 0));
++	if (count == 0) {
++		return -1;
++	}
++
++	return 1;
++}
++
+ /* initHTTP() - Configures the operator parameters
+  *
+  * This function configures the operator parameters
+@@ -1445,23 +1761,38 @@ uint8_t Wasp3G::waitForData(	const char*
+ 								int seconds, 
+ 								int n_answers)
+ {
+-	char theCommand[100];
++	char theCommand[800];
++#if NBIOT_FUSE
++	char nbiotrecv[60];
++#endif
+ 	
+ 	memset(theCommand, '\0', sizeof(theCommand));
+ 
+ 	int theLength = 0;
+ 	int minLength;
+ 	int maxLength;
+-	int it=0;
++	int it=0, i=0, j=0;
+ 	uint8_t first=1;
+ 	char aux;
++	char num[5];
++	bool trigger = false;
++
++	//USB.println(expectedAnswer1);
+ 	
+-	
+-	// Gets the maximum length and the minimum length of the all strings
+-	theLength=strlen(expectedAnswer1);
+-	minLength=theLength;
+-	maxLength=theLength;
+-	
++	// Gets the maximum length and the minimum length of the all strings	
++	if (strstr(expectedAnswer1, "+NSONMI:0,")) {
++		//USB.println("Extra Reading");
++		//theLength=strlen(expectedAnswer1) + 5;
++		theLength=strlen(expectedAnswer1) + 8;
++		minLength=theLength;
++		maxLength=theLength;
++	} else {
++		theLength=strlen(expectedAnswer1);
++                minLength=theLength;
++                maxLength=theLength;
++
++	}
++
+ 	if (n_answers > 1)
+ 	{
+ 		theLength=strlen(expectedAnswer2);
+@@ -1521,16 +1852,106 @@ uint8_t Wasp3G::waitForData(	const char*
+ 		{
+ 			if ( first == 1 )	// Gets data from serial port until 'minLength'
+ 			{
+-				for (it = 0; it < minLength; it++)
++				for (it = 0; it < minLength + 2; it++)
+ 				{
+ 					theCommand[it] = serialRead(_socket);
+ 					delay(20);
++					//if (strstr(expectedAnswer1, "0,58.26.233.145,5001,58,")) {
++					//if (strstr(expectedAnswer1, "+NSONMI:0,")) {
+ 					#if _3G_debug_mode>1
+ 						USB.print(F("Command answer1: "));
+ 						USB.println(theCommand);
+ 						USB.print(F("Length: "));
+ 						USB.println(strlen(theCommand), DEC);
+ 					#endif
++					//}
++#if HTTP_FUSE
++					if (strstr(theCommand, "+USOCR: ")) {
++						theCommand[it+1] = serialRead(_socket);
++						tcp_sock = theCommand[it+1];
++					#if _3G_debug_mode>1
++						USB.print(F("Get the socket: "));
++						USB.println(theCommand);
++					#endif
++					}
++
++					if (strstr(theCommand, "+UPSND: 0,0")) {
++						for (i=0; i<16; i++) {
++							theCommand[++it] = serialRead(_socket);
++						}
++						USB.print(F("Get the IP address: "));
++						USB.println(theCommand);
++					}
++
++					if (strstr(theCommand, "+UDNSRN: ")) {
++						for (i=0; i<16; i++) {
++							theCommand[++it] = serialRead(_socket);
++							ip_addr_dns[i] = theCommand[it];
++						}
++					#if _3G_debug_mode>1
++						USB.print(F("Resolve DNS: "));
++						USB.println(theCommand);
++					#endif
++					}
++
++					if (strstr(theCommand, "+USORD: ")) {
++						if (chklen == true) {
++							for (i=0; i<6; i++) {
++								theCommand[++it] = serialRead(_socket);
++								if (i > 1) {
++									num[j++] = theCommand[it];
++								}
++							}
++							rlength = atoi(num);
++							USB.print(F("Received Bytes: "));
++							USB.println(rlength);
++						} else {
++							for (i=0; i<rlength; i++) {
++								theCommand[++it] = serialRead(_socket);
++								if (i > 1 && trigger == true) {
++									HTTPres[j++] = theCommand[it];
++								}
++								if (theCommand[it] == '\"')
++									trigger = true;
++							}
++							USB.println(F("Received Data: "));
++							USB.println(HTTPres);
++                                                }
++					}
++#endif
++#if NBIOT_FUSE
++					/* NB-IOT */
++					if (strstr(theCommand, "+CGPADDR:1,")) {
++						for (i=0; i<16; i++) {
++						    theCommand[++it] = serialRead(_socket);
++						    ip_addr_dns[i] = theCommand[it];
++						}
++						USB.print(F("[NB-IOT] IP Addr: "));
++						USB.print(ip_addr_dns);
++					}
++
++					if (strstr(theCommand, "+NSONMI:0,")) {
++						for (i=0; i<3; i++) {
++							theCommand[++it] = serialRead(_socket);
++							num[j++] = theCommand[it];
++						}
++						rlength = atoi(num);
++						USB.print(F("[NB-IOT] Received Bytes: "));
++						USB.println(rlength);
++					}
++	
++					snprintf(nbiotrecv, sizeof(nbiotrecv), "0,%s,%d,%d,", ip_addr_remote, udp_port, rlength);
++					//USB.print(F("[NB-IoT] Receive.... "));
++					//USB.println(nbiotrecv);
++					if (strstr(theCommand, nbiotrecv)) { // <socket> <ip_addr> <port> <length> <data> <remaining length>
++						USB.println("[NB-IOT] Start receiving....");
++						for (i=0; i< (rlength * 2); i++) {
++							theCommand[++it] = serialRead(_socket);
++							strnbiot[j++] = theCommand[it];
++						}
++						USB.println(strnbiot);
++					}	
++#endif
+ 				}
+ 				if ((n_answers > 1) && (minLength < maxLength))
+ 				{
+@@ -1600,6 +2021,8 @@ uint8_t Wasp3G::waitForData(	const char*
+ 						USB.println(CME_CMS_code,DEC);
+ 					#endif
+ 				}
++				//USB.println("[NB-IoT Wait]");
++				//USB.println(expectedAnswer1);
+ 				return 1;
+ 			}
+ 
+@@ -1674,7 +2097,8 @@ uint8_t Wasp3G::waitForData(	const char*
+ 		// Condition to avoid an overflow (DO NOT REMOVE)
+ 		if( millis() < timeout) timeout = millis();
+ 	}
+-	
++
++	//USB.println("[Return] 0");	
+ 	return 0;
+ }
+ 
+@@ -1839,10 +2263,14 @@ uint8_t Wasp3G::setMode(uint8_t pwrMode)
+ 			{			
+ 				// For all versions
+ 				// Enables numeric error codes:
++#if NBIOT_FUSE
++				sendCommand1("+NRB",OK_RESPONSE);
++#endif
+ 				sendCommand1("+CMEE=1",OK_RESPONSE);
+ 				// Disables command echoes:
++#if HTTP_FUSE
+ 				sendCommand1("E0",OK_RESPONSE);
+-				
++#endif
+ 				strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[0])));	//POWER_FULL
+ 				answer=sendCommand2(str_aux1, OK_RESPONSE, ERROR_CME);
+ 				
+@@ -1958,10 +2386,15 @@ int8_t Wasp3G::check(unsigned long time)
+ 	
+ 	unsigned long previous;
+ 	int8_t answer;
+-	
++
++#if NBIOT_FUSE
++        strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[67])));    //NB_CHECK
++        strcpy_P(str_aux2, (char*)pgm_read_word(&(table_MISC[68])));    //NB_CHECK_RES
++#endif
++#if HTTP_FUSE	
+ 	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[54])));	//CHECK
+ 	strcpy_P(str_aux2, (char*)pgm_read_word(&(table_MISC[55])));	//CHECK_RES
+-	
++#endif
+ 	previous = millis();
+ 	
+ 	do{	
+@@ -1989,6 +2422,45 @@ int8_t Wasp3G::check(unsigned long time)
+ 	return 1;
+ }
+ 
++#if NBIOT_FUSE
++
++int8_t Wasp3G::checknbiot(unsigned long time){
++
++        unsigned long previous;
++        int8_t answer;
++
++        strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[74])));    //NB_CHECKS
++        strcpy_P(str_aux2, (char*)pgm_read_word(&(table_MISC[75])));    //NB_CHECKS_RES
++
++        previous = millis();
++
++        do{
++                // Sends the command and waits for the answer 0,1 connected
++                answer = sendCommand1(str_aux1, str_aux2, 3000, 1);
++
++                if (answer == 1)
++                {
++                        answer = serialRead(_socket) - 0x30;
++                }
++                // Condition to avoid an overflow (DO NOT REMOVE)
++                if( millis() < previous) previous = millis();
++        }while ((answer == 0) && ((millis() - previous) < (time * 1000)));
++
++        #if _3G_debug_mode>0
++                USB.print(F("Network status: "));
++                USB.println(answer, DEC);
++        #endif
++
++        if ((answer != 1) || ((millis() - previous) > (time * 1000)))
++        {
++                return -answer;
++        }
++
++        return 1;
++}
++
++#endif
++
+ /* setTime() - Sets time and date to 3G module from RTC
+ *
+ * Returns '1' on success , '0' if error and '-2' if error with CME error response.
+@@ -5477,6 +5949,113 @@ int8_t Wasp3G::deletePOP3mail(uint8_t in
+ //HTTP functions
+ #if HTTP_FUSE
+ 
++int16_t Wasp3G::readSARA_URL(const char* url, uint16_t port, const char* HTTP_request){
++	int16_t answer;
++	int i=0, count;
++
++	// Set up the socket
++	memset(buffer_3G, '\0', BUFFER_SIZE);
++	delay(1000);
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[18])));	// STCP_SOCK
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s", str_aux1);
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[19])));	// STCP_SOCK_ACK
++	answer = sendCommand1(buffer_3G, str_aux1);
++	if (answer != 1)
++                return -1;
++
++	USB.print(F("[SARA] TCP Socket Number: "));
++	USB.println(tcp_sock);
++
++	// Get the IP address based on domain name
++	if (*url > 57 || *url < 48) {
++		strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[20])));	// STCP_DNS
++		snprintf(buffer_3G, sizeof(buffer_3G), "%s0,\"%s\"", str_aux1, url);
++		strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[21])));	// STCP_DNS_ACK
++		answer = sendCommand1(buffer_3G, str_aux1);
++		if (answer == 0 || answer == 2) {
++			return -1;
++		}
++		
++		USB.print(F("[SARA] IP Address: "));
++		USB.println(ip_addr_dns);
++	}
++
++	// Connect to a remote TCP server
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[22])));	// USOCO Connect Socket
++	if (*url > 57 || *url < 48) {
++		ip_addr_dns[strlen(ip_addr_dns)-1] = '\0';		// Remove \r\n
++		snprintf(buffer_3G, sizeof(buffer_3G), "%s%c,%s,%d", str_aux1, tcp_sock, ip_addr_dns, port);
++	} else 
++		snprintf(buffer_3G, sizeof(buffer_3G), "%s%c,\"%s\",%d", str_aux1, tcp_sock, url, port);
++	answer = sendCommand1(buffer_3G, OK_RESPONSE);
++	if (answer != 1)
++		return -1;
++
++	USB.print(F("[SARA] Connection Socket: "));
++	USB.println(buffer_3G);
++
++	// Write data to socket
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[23])));	// USOWR Write Socket Data
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s%c,%d", str_aux1, tcp_sock, strlen(HTTP_request));
++	answer = sendCommand1(buffer_3G, "@");
++	if (answer != 1)
++		return -1;
++
++	delay(1000);
++	for (uint16_t x=0 ; x < strlen(HTTP_request);x++)
++		printByte(HTTP_request[x], _socket);
++	delay(1000);
++
++	// Confirm data delivery
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[24])));	// USOWR Return
++	answer = waitForData(str_aux1, ERROR, HTTP_TIMEOUT, millis(), 0);
++	if (answer != 1)
++		return -1;
++
++	USB.println(F("[SARA] Write Data Complete"));
++
++	// Check the length of received data from socket
++	chklen = true;
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[25])));	// USORD Read Socket Data, Check Length
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s%c,0", str_aux1, tcp_sock);
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[26])));
++	answer = sendCommand1(buffer_3G, str_aux1);
++	if (answer != 1)
++		return -1;
++
++	USB.print(F("[SARA] Received Byte: "));
++	USB.println(rlength);
++ 
++	// Read the data from the socket
++	chklen = false;
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[25])));	// USORD Read Socket Data, Read Data
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s%c,%d", str_aux1, tcp_sock, rlength);
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[26])));
++	answer = sendCommand1(buffer_3G, str_aux1);
++	if (answer != 1)
++		return -1;
++
++	// Close the socket
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_HTTP[27])));    // USOCL
++        snprintf(buffer_3G, sizeof(buffer_3G), "%s%c", str_aux1, tcp_sock);
++        answer = sendCommand1(buffer_3G, OK_RESPONSE);
++        if (answer != 1)
++                return -1;
++
++	// Deactivate Profile
++	strcpy_P(str_aux1, (char*)pgm_read_word(&(table_MISC[64])));    // SET UPSDA
++	snprintf(buffer_3G, sizeof(buffer_3G), "%s0,4", str_aux1);
++	count = 5;
++	do {
++		answer=sendCommand1(buffer_3G, OK_RESPONSE);
++		count--;
++	} while ((answer != 1) && (count  > 0));
++	if (count == 0)
++		return -1;
++
++	return 1;
++}
++
+ /* readURL(const char*, uint16_t, uint16_t , const char*) - Sends a request to a HTTP url and get an answer
+  *
+  * This function sends a request to a HTTP url and get an answer. The answer is stored in 'buffer_3G'
+@@ -9507,6 +10086,7 @@ int8_t Wasp3G::sendFiletoWiFiFTP(char* o
+ 	 
+ 	 return answer;
+ }
++
+ #endif
+ 
+ /* sendFileto3GFTP(uint8_t, const char*, const char*r, const char*, uint8_t, const char*, const char*) - Uploads a file to a FTP server
